@@ -34,7 +34,7 @@ app.set('io', io);
 const userSockets = new Map();
 
 io.on('connection', (socket) => {
-  console.log('Client connected via WebSocket', socket.id);
+  //console.log('Client connected via WebSocket', socket.id);
 
   socket.on("register-user", (userId) => {
   const socketsSet = userSockets.get(userId);
@@ -42,8 +42,8 @@ io.on('connection', (socket) => {
     
     userSockets.delete(userId);
     userSockets.set(userId, new Set([socket.id]));
-    console.log(`Cleaned all sockets for user ${userId}`);
-    console.log("✔️ Registered user", userId, "with socket", socket.id);
+    //console.log(`Cleaned all sockets for user ${userId}`);
+    //console.log(" Registered user", userId, "with socket", socket.id);
   } else {
     console.log(`Socket ${socket.id} already registered for user ${userId}`);
   }
@@ -54,10 +54,10 @@ io.on('connection', (socket) => {
     for (const [userId, socketsSet] of userSockets.entries()) {
       if (socketsSet.has(socket.id)) {
         socketsSet.delete(socket.id);
-        console.log(`Socket ${socket.id} disconnected for user ${userId}`);
+        //console.log(`Socket ${socket.id} disconnected for user ${userId}`);
         if (socketsSet.size === 0) {
           userSockets.delete(userId);
-          console.log(`No more active sockets for user ${userId}, removed from userSockets`);
+          //console.log(`No more active sockets for user ${userId}, removed from userSockets`);
         }
         break;
       }
@@ -93,7 +93,7 @@ app.get("/", (req, res) => {
     res.send("Backend is running!");
 });
 const tf = require('@tensorflow/tfjs-node');
-console.log(tf.version);
+
 
 
 const PORT = process.env.PORT || 5000;

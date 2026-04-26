@@ -1,103 +1,74 @@
 const tf = require('@tensorflow/tfjs-node');
-const sharp = require('sharp');
-const path = require('path');
-require('dotenv').config();
-const modelPath = process.env.MODEL_SOILS_PATH;
+const mlService = require('../utils/mlService');
 
+const MODEL_PATH = process.env.MODEL_SOILS_PATH;
+const CLASSES = [
+  'Alluvial Soil', 'Black Soil', 'Clay Soil', 'Red Soil', 'Sandy Soil'
+];
 
 let model;
-class CustomL2Regularizer extends tf.regularizers.l2 {
-    static className = 'L2';
 
-    constructor(config) {
-        super({ l2: config.l2 || 0.01 });
-    }
-}
-
-tf.serialization.registerClass(CustomL2Regularizer);
-
-async function loadModel() {
-    try {
-        console.log(`Loading model from: ${modelPath}`);
-        model = await tf.loadLayersModel(`file://${modelPath}`);
-        console.log("Model loaded successfully.");
-    } catch (error) {
-        console.error("Error loading model:", error);
-    }
-}
-
-function getBestMatches(classProbabilities,classes)
-{
-    const prob={}
-    for(i=0;i<classes.length;i++)
-        prob[classes[i]]=classProbabilities[i]
-    const top3 = Object.entries(prob).sort((a, b) => b[1] - a[1])  
-    .slice(0, 3) 
-    .reduce((obj, [key, value]) => {
-      obj[key] = value*100; 
-      return obj;
-    }, {});
-
-    console.log(top3)
-    return top3
-
-}
-
-async function predictSoilClass(imagePath)
- {
-    if (!model) {
-        throw new Error('Model not loaded. Please ensure the model is loaded before making predictions.');
-    }
-    const imageBuffer = await sharp(imagePath)
-    .resize({ width: 224, height: 224, fit: 'fill' })  
-    .toFormat('png')  
-        .toBuffer();
-
-    const tensor = tf.node.decodeImage(imageBuffer,3)
-        .expandDims(0)
-        .div(tf.scalar(255.0));  
-    
-    const prediction = model.predict(tensor);
-    const classProbabilities = prediction.arraySync()[0];
-    const predictedClassIndex = classProbabilities.indexOf(Math.max(...classProbabilities));
-    
-    const classes = [
-        'Alluvial Soil', 'Black Soil', 'Clay Soil', 'Red Soil', 
-        'Sandy Soil'
-    ];
-
-    const prob=getBestMatches(classProbabilities,classes)
-   
-    return {
-        predictedClass: classes[predictedClassIndex],
-        probability: classProbabilities[predictedClassIndex],
-        allProb:prob
-    };
-}
-
-
-async function handleSoilPhotoPrediction(req, res)
- {
-    try {
-        const imagePath = req.file.path;
-        const result = await predictSoilClass(imagePath);
-        console.log(result);
-        
-        res.json({
-            message: "Soil photo processed successfully",
-            predictedClass: result.predictedClass,
-            probability: result.probability,
-            allProb:result.allProb
-        });
-    } catch (error) {
-        console.error("Prediction error:", error);
-        res.status(500).json({ error: "Error processing soil photo" });
-    }
-}
-
-module.exports = {
-    handleSoilsPhotoPrediction: handleSoilPhotoPrediction,
-    predictSoilClass: predictSoilClass
+/**
+ * Loads the soil classification model using Layers API
+ */
+const loadModel = async () => {
+  if (model) return model;
+  try {
+    // Soils model specifically uses loadLayersModel
+    model = await tf.loadLayersModel(`file://${MODEL_PATH}`);
+    console.log("Soils model loaded successfully.");
+    return model;
+  } catch (error) {
+    console.error("Soils Model Load Error:", error);
+  }
 };
 
+/**
+ * Core prediction logic for soil types
+ */
+const predictSoilClass = async (imagePath) => {
+  const currentModel = await loadModel();
+  if (!currentModel) throw new Error('Model not initialized');
+
+  // Standardized preprocessing via mlService
+  const tensor = await mlService.preprocessImage(imagePath, { 
+    width: 224, 
+    height: 224, 
+    fit: 'fill' 
+  });
+
+  const prediction = currentModel.predict(tensor);
+  const probabilities = prediction.dataSync(); // Standardized from arraySync
+  
+  const maxIndex = probabilities.indexOf(Math.max(...probabilities));
+
+  return {
+    predictedClass: CLASSES[maxIndex],
+    probability: probabilities[maxIndex],
+    allProb: mlService.getTopMatches(probabilities, CLASSES)
+  };
+};
+
+/**
+ * Express handler for soil prediction requests
+ */
+const handleSoilPhotoPrediction = async (req, res) => {
+  try {
+    const result = await predictSoilClass(req.file.path);
+    res.json({
+      message: "Soil photo processed successfully",
+      ...result
+    });
+  } catch (error) {
+    console.error("Prediction error:", error);
+    res.status(500).json({ error: "Error processing soil photo" });
+  }
+};
+
+// Initial load
 loadModel();
+
+module.exports = {
+  handleSoilsPhotoPrediction: handleSoilPhotoPrediction,
+  predictSoilClass
+};

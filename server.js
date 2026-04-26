@@ -1,103 +1,65 @@
 require("dotenv").config();
 const express = require("express");
-const mongoose=require('mongoose')
-const socketIo = require('socket.io');
 const http = require('http');
-const {connectDB} = require('./config/database');
+const socketIo = require('socket.io');
+const mongoose = require('mongoose');
 const cors = require("cors");
-const predictWeeds =require('./routes/predictWeedsRoutes')
-const predictSoils=require('./routes/predictSoilsRoutes')
-const predictPests=require('./routes/predictPestsRoutes')
-const predictDiseases=require('./routes/predictDiseasesRoutes')
-const auth=require('./routes/authRoutes')
-const location=require('./routes/locationRoutes')
-const plantation=require('./routes/plantationRoutes')
-const solution= require('./routes/solutionRoutes')
-const review= require('./routes/reviewRoutes')
-const detail= require('./routes/detailRoutes')
-const soilRecommendation=require('./routes/soilRecommendationRoutes')
-const alert= require('./routes/alertRoutes')
-const threat= require ('./routes/pestThreatRoutes')
+const { connectDB } = require('./config/database');
 
 const app = express();
-
 const server = http.createServer(app);
-const io = socketIo(server, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST']
-  }
-});
+const io = socketIo(server, { cors: { origin: '*' } });
 
-app.set('io', io);
-
+// State Management
 const userSockets = new Map();
+app.set('io', io);
+app.set('userSockets', userSockets);
 
+// Socket Logic
 io.on('connection', (socket) => {
-  //console.log('Client connected via WebSocket', socket.id);
-
   socket.on("register-user", (userId) => {
-  const socketsSet = userSockets.get(userId);
-  if (!socketsSet || !socketsSet.has(socket.id)) {
-    
-    userSockets.delete(userId);
+    // Clear previous and set new (ensuring clean single-session mapping)
     userSockets.set(userId, new Set([socket.id]));
-    //console.log(`Cleaned all sockets for user ${userId}`);
-    //console.log(" Registered user", userId, "with socket", socket.id);
-  } else {
-    console.log(`Socket ${socket.id} already registered for user ${userId}`);
-  }
-});
-
+  });
 
   socket.on('disconnect', () => {
     for (const [userId, socketsSet] of userSockets.entries()) {
-      if (socketsSet.has(socket.id)) {
-        socketsSet.delete(socket.id);
-        //console.log(`Socket ${socket.id} disconnected for user ${userId}`);
-        if (socketsSet.size === 0) {
-          userSockets.delete(userId);
-          //console.log(`No more active sockets for user ${userId}, removed from userSockets`);
-        }
-        break;
+      if (socketsSet.delete(socket.id) && socketsSet.size === 0) {
+        userSockets.delete(userId);
       }
     }
   });
 });
 
-
-
-app.set('userSockets', userSockets);
-
-mongoose.connect(process.env.MONGO_DB_URI);
+// Middleware
 app.use(cors());
 app.use(express.json());
 
-app.use("/api/weeds", predictWeeds);
-app.use("/api/soils",predictSoils)
-app.use("/api/pests",predictPests)
-app.use("/api/diseases",predictDiseases)
+// Domain Routes - Grouped for readability
+const ROUTES = {
+  '/api/weeds': './routes/predictWeedsRoutes',
+  '/api/soils': './routes/predictSoilsRoutes',
+  '/api/pests': './routes/predictPestsRoutes',
+  '/api/diseases': './routes/predictDiseasesRoutes',
+  '/api/auth': './routes/authRoutes',
+  '/api/location': './routes/locationRoutes',
+  '/api/plantation': './routes/plantationRoutes',
+  '/api/solution': './routes/solutionRoutes',
+  '/api/review': './routes/reviewRoutes',
+  '/api/detail': './routes/detailRoutes',
+  '/api/soil': './routes/soilRecommendationRoutes',
+  '/api/alert': './routes/alertRoutes',
+  '/api/threat': './routes/pestThreatRoutes'
+};
 
-app.use("/api/auth",auth)
-app.use("/api/location",location)
-app.use('/api/plantation',plantation)
+Object.entries(ROUTES).forEach(([path, route]) => app.use(path, require(route)));
 
-app.use('/api/solution',solution)
-app.use('/api/review',review)
-app.use('/api/detail',detail)
-app.use('/api/soil',soilRecommendation)
-app.use('/api/alert',alert)
-app.use('/api/threat',threat)
+app.get("/", (req, res) => res.send("Backend is running!"));
 
-app.get("/", (req, res) => {
-    res.send("Backend is running!");
-});
-const tf = require('@tensorflow/tfjs-node');
-
-
-
-const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
-
+// Database & Server Start
+mongoose.connect(process.env.MONGO_DB_URI)
+  .then(() => {
+    const PORT = process.env.PORT || 5000;
+    server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  })
+  .catch(err => console.error("DB Connection Error:", err));

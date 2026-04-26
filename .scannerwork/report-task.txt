@@ -2,5 +2,5 @@ projectKey=BachelorThesis
 serverUrl=http://localhost:9000
 serverVersion=26.4.0.121862
 dashboardUrl=http://localhost:9000/dashboard?id=BachelorThesis
-ceTaskId=fec9db78-2563-4a8e-9db4-8ac09f9d3883
-ceTaskUrl=http://localhost:9000/api/ce/task?id=fec9db78-2563-4a8e-9db4-8ac09f9d3883
+ceTaskId=39bb92aa-8dcb-46aa-960b-eb0f03677892
+ceTaskUrl=http://localhost:9000/api/ce/task?id=39bb92aa-8dcb-46aa-960b-eb0f03677892

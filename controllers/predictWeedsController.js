@@ -1,105 +1,28 @@
 const tf = require('@tensorflow/tfjs-node');
-const sharp = require('sharp');
-const path = require('path');
 require('dotenv').config();
-const modelPath = process.env.MODEL_PATH;
 
+const { createPredictionController } = require('./predictionControllerFactory');
 
-let model;
-class CustomL2Regularizer extends tf.regularizers.l2 {
-    static className = 'L2';
+const WEED_CLASSES = [
+  'Ambrosia trifida (Ambrozia)',
+  'Sorghum halepense (Costrei)',
+  'Sinapis arvensis (Mustar Salbatic)',
+  'Cirsium arvense (Palamida)',
+  'Agropyron repens (Pir Tarator)',
+  'Veronica hederifolia (Soparlita)',
+  'Amaranthus retroflexus (Stir Salbatic)',
+  'Convolvulus arvensis (Volbura)',
+];
 
-    constructor(config) {
-        super({ l2: config.l2 || 0.01 });
-    }
-}
-
-tf.serialization.registerClass(CustomL2Regularizer);
-
-//modelPath="C:\\Users\\Ioana\\Desktop\\Thesis2\\ml_models\\weed_classification_1.json"
-
-async function loadModel() {
-    try {
-        //const modelPath = path.resolve(__dirname, '../ml_models/weed_classification_1.json');
-        console.log(`Loading model from: ${modelPath}`);
-        model = await tf.loadLayersModel(`file://${modelPath}`);
-        console.log("Model loaded successfully.");
-    } catch (error) {
-        console.error("Error loading model:", error);
-    }
-}
-
-function getBestMatches(classProbabilities,classes)
-{
-    const prob={}
-    for(i=0;i<classes.length;i++)
-        prob[classes[i]]=classProbabilities[i]
-    const top3 = Object.entries(prob).sort((a, b) => b[1] - a[1])  
-    .slice(0, 3) 
-    .reduce((obj, [key, value]) => {
-      obj[key] = value*100; 
-      return obj;
-    }, {});
-
-    console.log(top3)
-    return top3
-
-}
-
-async function predictWeedClass(imagePath)
- {
-    if (!model) {
-        throw new Error('Model not loaded. Please ensure the model is loaded before making predictions.');
-    }
-    const imageBuffer = await sharp(imagePath)
-        .resize({ width: 224, height: 224 })  
-        .toBuffer();
-
-    const tensor = tf.node.decodeImage(imageBuffer)
-        .expandDims(0)
-        .div(tf.scalar(255.0));  
-    
-    const prediction = model.predict(tensor);
-    const classProbabilities = prediction.dataSync();
-    const predictedClassIndex = classProbabilities.indexOf(Math.max(...classProbabilities));
-    
-    const classes = [
-        'Ambrosia trifida (Ambrozia)', 'Sorghum halepense (Costrei)', 'Sinapis arvensis (Mustar Salbatic)', 'Cirsium arvense (Palamida)', 
-        'Agropyron repens (Pir Tarator)', 'Veronica hederifolia (Soparlita)', 'Amaranthus retroflexus (Stir Salbatic)', 'Convolvulus arvensis (Volbura)'
-    ];
-
-    const prob=getBestMatches(classProbabilities,classes)
-   
-    return {
-        predictedClass: classes[predictedClassIndex],
-        probability: classProbabilities[predictedClassIndex],
-        allProb:prob
-    };
-}
-
-
-async function handleWeedPhotoPrediction(req, res)
- {
-    try {
-        const imagePath = req.file.path;
-        const result = await predictWeedClass(imagePath);
-        console.log(result);
-        
-        res.json({
-            message: "Weed photo processed successfully",
-            predictedClass: result.predictedClass,
-            probability: result.probability,
-            allProb:result.allProb
-        });
-    } catch (error) {
-        console.error("Prediction error:", error);
-        res.status(500).json({ error: "Error processing weed photo" });
-    }
-}
+const weedPredictionController = createPredictionController({
+  modelPath: process.env.MODEL_PATH,
+  loadModel: tf.loadLayersModel,
+  classNames: WEED_CLASSES,
+  successMessage: 'Weed photo processed successfully',
+  errorMessage: 'Error processing weed photo',
+});
 
 module.exports = {
-    handleWeedPhotoPrediction,
-    predictWeedClass
+  handleWeedPhotoPrediction: weedPredictionController.handlePhotoPrediction,
+  predictWeedClass: weedPredictionController.predictImageClass,
 };
-
-loadModel();
